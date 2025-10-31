@@ -125,27 +125,31 @@ for i in range(N*M):
     with ChipSelect(17):
         t = i / N * 2 * math.pi
 
-        # Rotate around y axis
-        rotation_matrix = [
-            [math.cos(t),  0, -math.sin(t)],
-            [          0, -1,            0],
-            [math.sin(t),  0,  math.cos(t)],
-        ]
-
-        # Flip y and z, and rotate around y axis
+        # # Rotate around y axis
         # rotation_matrix = [
-        #     [-math.cos(t), math.sin(t), 0],
-        #     [0,  0, -1],
-        #     [math.sin(t),  math.cos(t), 0],
+        #     [math.cos(t),  0, -math.sin(t)],
+        #     [          0,  1,            0],
+        #     [math.sin(t),  0,  math.cos(t)],
         # ]
 
-        scale = SCALE * 2#* (1 + 0.5 * math.cos(0.1*t))
-        rotation_matrix = [[scale * element for element in row] for row in rotation_matrix]
+        # # Flip y and z, and rotate around y axis
+        # # rotation_matrix = [
+        # #     [-math.cos(t), math.sin(t), 0],
+        # #     [0,  0, -1],
+        # #     [math.sin(t),  math.cos(t), 0],
+        # # ]
+
+        # scale = SCALE#* (1 + 0.5 * math.cos(0.1*t))
+        # rotation_matrix = [[scale * element for element in row] for row in rotation_matrix]
+
+        # # position_vector = [
+        # #     2.8*math.sin(2.92*t),
+        # #     2.4*math.cos(1.14*t),
+        # #     2*math.cos(1.26*t)**2+2,
+        # # ]
 
         # position_vector = [
-        #     2.8*math.sin(2.92*t),
-        #     2.4*math.cos(1.14*t),
-        #     2*math.cos(1.26*t)**2+2,
+        #     0.0, 0.0, 2 + 0*math.cos(t*0.5556424),
         # ]
 
         position_vector = [
