@@ -56,8 +56,8 @@ class FPGA:
         data1 = data[0:100]
         data2 = data[100:]
         #with ChipSelect(self._pin):
-        #if dosleep:
-        #    sleep(0.1)
+        if dosleep:
+           sleep(0.1)
         #self._spi.write(b"\x00\x00\x00\x00")
         self._spi.write(data1)
         if dosleep:
@@ -98,7 +98,7 @@ def to_fixed(value: float | int) -> int:
     """Converts a floating point number to a fixed point number."""
     return int(round((value * (1 << DECIMAL_WIDTH)))) & ((1 << TOTAL_WIDTH) - 1)
 
-def to_fixed_list(values: list[float | int]) -> list[int]:
+def to_fixed_list(values) -> list[int]:
     """Converts a list of floating point numbers to fixed point numbers."""
     return [to_fixed(v) for v in values]
 
@@ -114,25 +114,60 @@ def flatten(obj) -> list:
 
     return l
 
+def euler_to_rotation_matrix(pitch: float, yaw: float, roll: float) -> list[list[float]]:
+    """
+    Convert Euler angles to rotation matrix.
+    Rotation order: ZYX (yaw, pitch, roll)
+
+    Courtesy of chat GPT!
+
+    Args:
+        roll: Rotation around X-axis in radians
+        pitch: Rotation around Y-axis in radians
+        yaw: Rotation around Z-axis in radians
+    
+    Returns:
+        3x3 rotation matrix as a list of lists
+    """
+    # Precompute sines and cosines
+    cos_x = math.cos(pitch)
+    sin_x = math.sin(pitch)
+    cos_y = math.cos(yaw)
+    sin_y = math.sin(yaw)
+    cos_z = math.cos(roll)
+    sin_z = math.sin(roll)
+
+    # Rotation matrix
+    R = [
+        [cos_z * cos_y, -cos_z * sin_y * sin_x - sin_z * cos_x, sin_z * sin_x + cos_z * sin_y * cos_x],
+        [sin_z * cos_y, -sin_z * sin_y * sin_x + cos_z * cos_x, cos_z * sin_x + sin_z * sin_y * cos_x],
+        [        sin_y,                          cos_y * sin_x,                        -cos_y * cos_x],
+    ]
+    
+    return R
+
 tp = Pin(20, mode=Pin.IN)
 
-FPS = 120
+FPS = 30
 
 N = 512
 M = 10000
 
-SCALE = 1
+SCALE = 0.25
 
 fpga = FPGA()
 
 MODEL_CUBE = 0
 MODEL_TEAPOT_LOWER_POLY = 1
-MODEL_DATA = 0
+MODEL_SUZANNE = 2
 
 with ChipSelect(17):
     #fpga.upload_model("teapot-lower-poly.data", MODEL_TEAPOT_LOWER_POLY)
-    fpga.upload_model("teapot-lower-poly.data", MODEL_DATA)
-    fpga.upload_model("teapot-lower-poly.data", 1)
+    fpga.upload_model("suzanne.data", MODEL_SUZANNE)
+    fpga.upload_model("cube.data", MODEL_CUBE)
+    fpga.upload_model("teapot-lower-poly.data", MODEL_TEAPOT_LOWER_POLY)
+    # fpga.upload_model("suzanne.data", MODEL_SUZANNE)
+    # fpga.upload_model("teapot-lower-poly.data", 1)
     #fpga.read(1)
     #fpga.upload_model("teapot.data", MODEL_TEAPOT)
     sleep(0.1)
@@ -143,25 +178,32 @@ for i in range(N*M):
         t = i / N * 2 * math.pi
 
         # Rotate around y axis
-        rotation_matrix = [
-            [math.cos(t),  0, -math.sin(t)],
-            [          0, -1,            0],
-            [math.sin(t),  0,  math.cos(t)],
-        ]
+        rotation_matrix = euler_to_rotation_matrix(0, t, 0)
         scale = SCALE * 2#* (1 + 0.5 * math.cos(0.1*t))
         rotation_matrix = [[scale * element for element in row] for row in rotation_matrix]
-        step = 3
-        depth = 2
-        for x in range(-3, 4, step):
-            for y in range(-3, 4, step):
-                if not (x == 0 and y == 0):
-                    continue
+        
+        x0 = -1
+        x1 = 1
+        y0 = -1
+        y1 = 1
+        z = 2
+        
+        nx = 3
+        ny = 3
+
+        for i in range(nx):
+            for j in range(ny):
+                x = x0 + (x1 - x0) * i / (nx - 1)
+                y = y0 + (y1 - y0) * j / (ny - 1)
+
                 position_vector = [
-                    x, y, depth
+                    x, y, z
                 ]
 
+                model = MODEL_CUBE if (i % 2 and j % 2) else MODEL_TEAPOT_LOWER_POLY
+
                 transform = pack(to_fixed_list(position_vector + flatten(rotation_matrix)))
-                fpga.add_model_instance(MODEL_DATA, transform, last_in_scene=int(x == 0 and y == 0))
+                fpga.add_model_instance(model, transform, last_in_scene=int(i >= nx - 1 and j >= ny - 1))
 
         fpga._spi.write(bytes([0x00]))
     sleep(1/FPS)
