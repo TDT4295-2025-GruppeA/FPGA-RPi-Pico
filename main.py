@@ -44,14 +44,27 @@ class FPGA:
 
     def __init__(self):
         self._pin = 17
-        self._spi = SPI(0, baudrate=50000)
+        self._spi = SPI(0, baudrate=5000000)
         print(self._spi)
     
-    def _send_cmd(self, cmd: int, data: bytes):
+    def _send_cmd(self, cmd: int, data: bytes, dosleep=False):
         #print(f"Sending command: {cmd}, {len(data)} bytes")
         data = cmd.to_bytes(1, "big") + data
+        # if b"\xa1" in data:
+        #     print("A1 IN DATA!!")
+        
+        data1 = data[0:100]
+        data2 = data[100:]
         #with ChipSelect(self._pin):
-        self._spi.write(data)
+        #if dosleep:
+        #    sleep(0.1)
+        #self._spi.write(b"\x00\x00\x00\x00")
+        self._spi.write(data1)
+        if dosleep:
+            sleep(0.01)
+        self._spi.write(data2)
+        # self._spi.write(b"\x00\x00\x00\x00")
+        
 
     def add_model(self, model_id: int):
         self._send_cmd(self.CMD_BEGIN_MODEL_UPLOAD, model_id.to_bytes(1, "big"))
@@ -68,14 +81,14 @@ class FPGA:
             while triangle != b"":
                 self.upload_triagle(triangle)
                 triangle = f.read(42)
-                sleep(0.01)
+                #sleep(0.01)
     
     def add_model_instance(self, model_id: int, transform: bytes, last_in_scene: int):
         data = (
             last_in_scene.to_bytes(1, "big")
             + model_id.to_bytes(1, "big")
             + transform)
-        self._send_cmd(self.CMD_ADD_MODEL_INSTANCE, data)
+        self._send_cmd(self.CMD_ADD_MODEL_INSTANCE, data, dosleep=False)
     
     def read(self, size: int = 1) -> bytes:
         return self._spi.read(size)
@@ -103,7 +116,7 @@ def flatten(obj) -> list:
 
 tp = Pin(20, mode=Pin.IN)
 
-FPS = 60
+FPS = 120
 
 N = 512
 M = 10000
@@ -114,49 +127,41 @@ fpga = FPGA()
 
 MODEL_CUBE = 0
 MODEL_TEAPOT_LOWER_POLY = 1
+MODEL_DATA = 0
 
 with ChipSelect(17):
-    fpga.upload_model("teapot-lower-poly.data", MODEL_TEAPOT_LOWER_POLY)
-    fpga.read(1)
+    #fpga.upload_model("teapot-lower-poly.data", MODEL_TEAPOT_LOWER_POLY)
+    fpga.upload_model("teapot-lower-poly.data", MODEL_DATA)
+    fpga.upload_model("teapot-lower-poly.data", 1)
+    #fpga.read(1)
     #fpga.upload_model("teapot.data", MODEL_TEAPOT)
     sleep(0.1)
 
 for i in range(N*M):
+    #i = int(input("ksdf.."))
     with ChipSelect(17):
         t = i / N * 2 * math.pi
 
-        # # Rotate around y axis
-        # rotation_matrix = [
-        #     [math.cos(t),  0, -math.sin(t)],
-        #     [          0,  1,            0],
-        #     [math.sin(t),  0,  math.cos(t)],
-        # ]
-
-        # # Flip y and z, and rotate around y axis
-        # # rotation_matrix = [
-        # #     [-math.cos(t), math.sin(t), 0],
-        # #     [0,  0, -1],
-        # #     [math.sin(t),  math.cos(t), 0],
-        # # ]
-
-        # scale = SCALE#* (1 + 0.5 * math.cos(0.1*t))
-        # rotation_matrix = [[scale * element for element in row] for row in rotation_matrix]
-
-        # # position_vector = [
-        # #     2.8*math.sin(2.92*t),
-        # #     2.4*math.cos(1.14*t),
-        # #     2*math.cos(1.26*t)**2+2,
-        # # ]
-
-        # position_vector = [
-        #     0.0, 0.0, 2 + 0*math.cos(t*0.5556424),
-        # ]
-
-        position_vector = [
-            0, 0.1, 4 # + 15*math.cos(t*0.5556424),
+        # Rotate around y axis
+        rotation_matrix = [
+            [math.cos(t),  0, -math.sin(t)],
+            [          0, -1,            0],
+            [math.sin(t),  0,  math.cos(t)],
         ]
+        scale = SCALE * 2#* (1 + 0.5 * math.cos(0.1*t))
+        rotation_matrix = [[scale * element for element in row] for row in rotation_matrix]
+        step = 3
+        depth = 2
+        for x in range(-3, 4, step):
+            for y in range(-3, 4, step):
+                if not (x == 0 and y == 0):
+                    continue
+                position_vector = [
+                    x, y, depth
+                ]
 
-        transform = pack(to_fixed_list(position_vector + flatten(rotation_matrix)))
-        fpga.add_model_instance(MODEL_TEAPOT_LOWER_POLY, transform, last_in_scene=1)
-        
+                transform = pack(to_fixed_list(position_vector + flatten(rotation_matrix)))
+                fpga.add_model_instance(MODEL_DATA, transform, last_in_scene=int(x == 0 and y == 0))
+
+        fpga._spi.write(bytes([0x00]))
     sleep(1/FPS)
